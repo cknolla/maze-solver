@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
@@ -10,6 +12,15 @@ import (
 const colCount = 40
 const rowCount = 20
 const cellSize = 50
+
+type Side int
+
+const (
+	top Side = iota
+	right
+	bottom
+	left
+)
 
 type Location struct {
 	X int
@@ -53,7 +64,7 @@ type Maze struct {
 }
 
 func NewMaze() Maze {
-	c := Maze{
+	m := Maze{
 		cells: make(map[Location]Cell, colCount*rowCount),
 		cont:  container.NewWithoutLayout(),
 	}
@@ -61,10 +72,10 @@ func NewMaze() Maze {
 		for x := 0; x < colCount; x++ {
 			position := fyne.NewPos(float32(x*cellSize), float32(y*cellSize))
 			cell := NewCell(position)
-			c.cells[Location{X: x, Y: y}] = cell
+			m.cells[Location{X: x, Y: y}] = cell
 		}
 	}
-	return c
+	return m
 }
 
 func (m *Maze) DrawCells(w *fyne.Window) {
@@ -90,4 +101,45 @@ func (m *Maze) DrawLine(source, target Location, undo bool) {
 	line.Position1 = m.cells[source].Center()
 	line.Position2 = m.cells[target].Center()
 	m.cont.Add(line)
+}
+
+func (m *Maze) HideWall(location Location, side Side) error {
+	sourceCell := m.cells[location]
+	switch side {
+	case top:
+		neighborX := location.X
+		neighborY := location.Y - 1
+		if neighborY < 0 {
+			return errors.New(fmt.Sprintf("neighborY position is out of range: %d", neighborY))
+		}
+		sourceCell.topWall.Hide()
+		m.cells[Location{X: neighborX, Y: neighborY}].bottomWall.Hide()
+	case right:
+		neighborX := location.X + 1
+		neighborY := location.Y
+		if neighborX >= colCount {
+			return errors.New(fmt.Sprintf("neighborX position is out of range: %d", neighborX))
+		}
+		sourceCell.rightWall.Hide()
+		m.cells[Location{X: neighborX, Y: neighborY}].leftWall.Hide()
+	case bottom:
+		neighborX := location.X
+		neighborY := location.Y + 1
+		if neighborY >= rowCount {
+			return errors.New(fmt.Sprintf("neighborY position is out of range: %d", neighborY))
+		}
+		sourceCell.bottomWall.Hide()
+		m.cells[Location{X: neighborX, Y: neighborY}].topWall.Hide()
+	case left:
+		neighborX := location.X - 1
+		neighborY := location.Y
+		if neighborX < 0 {
+			return errors.New(fmt.Sprintf("neighborX position is out of range: %d", neighborX))
+		}
+		sourceCell.leftWall.Hide()
+		m.cells[Location{X: neighborX, Y: neighborY}].rightWall.Hide()
+	default:
+		return errors.New(fmt.Sprintf("unknown side: %d", side))
+	}
+	return nil
 }
