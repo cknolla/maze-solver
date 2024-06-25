@@ -6,8 +6,8 @@ import (
 )
 
 func TestNewMaze(t *testing.T) {
-	maze := NewMaze()
-	assert.Equal(t, len(maze.cells), colCount*rowCount)
+	maze := NewMaze(40, 30, 20)
+	assert.Equal(t, len(maze.cells), maze.colCount*maze.rowCount)
 }
 
 func TestHideWall(t *testing.T) {
@@ -25,7 +25,7 @@ func TestHideWall(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			maze := NewMaze()
+			maze := NewMaze(40, 30, 20)
 			maze.HideWall(tc.location, tc.side)
 			assert.False(t, maze.cells[tc.location].walls[tc.side].Visible())
 			assert.False(t, maze.cells[tc.neighborLocation].walls[tc.neighborSide].Visible())
@@ -36,18 +36,17 @@ func TestHideWall(t *testing.T) {
 func TestHideWallPanics(t *testing.T) {
 	tests := map[string]struct {
 		location Location
-		side     Side
 	}{
-		"top":    {Location{X: 10, Y: 0}, top},
-		"right":  {Location{X: colCount - 1, Y: 2}, right},
-		"bottom": {Location{X: 10, Y: rowCount - 1}, bottom},
-		"left":   {Location{X: 0, Y: 5}, left},
+		"top":    {Location{X: 0, Y: -1}},
+		"right":  {Location{X: 40, Y: 0}},
+		"bottom": {Location{X: 0, Y: 30}},
+		"left":   {Location{X: -1, Y: 0}},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			maze := NewMaze()
-			assert.Panics(t, func() { maze.HideWall(tc.location, tc.side) })
+			maze := NewMaze(40, 30, 20)
+			assert.Panics(t, func() { maze.HideWall(tc.location, left) })
 		})
 	}
 }

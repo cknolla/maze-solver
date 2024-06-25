@@ -6,11 +6,8 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"image/color"
+	"time"
 )
-
-const colCount = 40
-const rowCount = 20
-const cellSize = 50
 
 type Side int
 
@@ -28,47 +25,61 @@ type Location struct {
 
 type Cell struct {
 	walls    map[Side]*canvas.Line
-	position fyne.Position
+	location Location
+	size     float32
+	visited  bool
 }
 
-func NewCell(position fyne.Position) Cell {
+func NewCell(location Location, size float32) Cell {
 	cell := Cell{
 		walls:    make(map[Side]*canvas.Line, 4),
-		position: position,
+		location: location,
+		size:     size,
 	}
+	position := cell.Position()
 	cell.walls[top] = canvas.NewLine(color.White)
 	cell.walls[top].Position1 = fyne.NewPos(position.X, position.Y)
-	cell.walls[top].Position2 = fyne.NewPos(position.X+cellSize, position.Y)
+	cell.walls[top].Position2 = fyne.NewPos(position.X+size, position.Y)
 	cell.walls[right] = canvas.NewLine(color.White)
-	cell.walls[right].Position1 = fyne.NewPos(position.X+cellSize, position.Y)
-	cell.walls[right].Position2 = fyne.NewPos(position.X+cellSize, position.Y+cellSize)
+	cell.walls[right].Position1 = fyne.NewPos(position.X+size, position.Y)
+	cell.walls[right].Position2 = fyne.NewPos(position.X+size, position.Y+size)
 	cell.walls[bottom] = canvas.NewLine(color.White)
-	cell.walls[bottom].Position1 = fyne.NewPos(position.X, position.Y+cellSize)
-	cell.walls[bottom].Position2 = fyne.NewPos(position.X+cellSize, position.Y+cellSize)
+	cell.walls[bottom].Position1 = fyne.NewPos(position.X, position.Y+size)
+	cell.walls[bottom].Position2 = fyne.NewPos(position.X+size, position.Y+size)
 	cell.walls[left] = canvas.NewLine(color.White)
 	cell.walls[left].Position1 = fyne.NewPos(position.X, position.Y)
-	cell.walls[left].Position2 = fyne.NewPos(position.X, position.Y+cellSize)
+	cell.walls[left].Position2 = fyne.NewPos(position.X, position.Y+size)
 	return cell
 }
 
+func (cell Cell) Position() fyne.Position {
+	return fyne.NewPos(float32(cell.location.X)*cell.size, float32(cell.location.Y)*cell.size)
+}
+
 func (cell Cell) Center() fyne.Position {
-	return fyne.NewPos((cell.position.X+cell.position.X+cellSize)/2, (cell.position.Y+cell.position.Y+cellSize)/2)
+	position := cell.Position()
+	return fyne.NewPos((position.X+position.X+cell.size)/2, (position.Y+position.Y+cell.size)/2)
 }
 
 type Maze struct {
-	cells map[Location]Cell
-	cont  *fyne.Container
+	colCount int
+	rowCount int
+	cells    map[Location]Cell
+	cont     *fyne.Container
+	cellSize float32
 }
 
-func NewMaze() Maze {
+func NewMaze(colCount, rowCount int, cellSize float32) Maze {
 	m := Maze{
-		cells: make(map[Location]Cell, colCount*rowCount),
-		cont:  container.NewWithoutLayout(),
+		colCount: colCount,
+		rowCount: rowCount,
+		cells:    make(map[Location]Cell, colCount*rowCount),
+		cont:     container.NewWithoutLayout(),
+		cellSize: cellSize,
 	}
 	for y := 0; y < rowCount; y++ {
 		for x := 0; x < colCount; x++ {
-			position := fyne.NewPos(float32(x*cellSize), float32(y*cellSize))
-			cell := NewCell(position)
+			cell := NewCell(Location{X: x, Y: y}, cellSize)
 			m.cells[Location{X: x, Y: y}] = cell
 		}
 	}
@@ -82,9 +93,9 @@ func (m *Maze) DrawCells(w *fyne.Window) {
 			m.cont.Add(wall)
 		}
 	}
-	m.cont.Resize(fyne.NewSize(colCount*cellSize, rowCount*cellSize))
+	m.cont.Resize(fyne.NewSize(float32(m.colCount)*m.cellSize, float32(m.rowCount)*m.cellSize))
 	(*w).SetContent(m.cont)
-	(*w).Resize(fyne.NewSize(colCount*cellSize+5, rowCount*cellSize+5))
+	(*w).Resize(fyne.NewSize(float32(m.colCount)*m.cellSize+5, float32(m.rowCount)*m.cellSize+5))
 }
 
 func (m *Maze) DrawLine(source, target Location, undo bool) {
@@ -93,48 +104,48 @@ func (m *Maze) DrawLine(source, target Location, undo bool) {
 		lineColor = color.RGBA{R: 100, G: 100, B: 100, A: 255}
 	}
 	line := canvas.NewLine(lineColor)
-	line.StrokeWidth = cellSize / 8
+	line.StrokeWidth = m.cellSize / 8
 	line.Position1 = m.cells[source].Center()
 	line.Position2 = m.cells[target].Center()
 	m.cont.Add(line)
 }
 
+// HideWall will make the specified location's wall invisible
+// If the location has a neighbor, its corresponding wall will be hidden as well.
+// For example, if the left wall of location 1,1 is hidden,
+// the right wall of location 0,1 must also be hidden to not render that line.
+// If the location's wall is on an outer edge, only the single wall will be hidden.
 func (m *Maze) HideWall(location Location, side Side) {
-	sourceCell := m.cells[location]
+	sourceCell, ok := m.cells[location]
+	if !ok {
+		panic(fmt.Sprintf("location %v does not exist", location))
+	}
 	switch side {
 	case top:
-		neighborX := location.X
-		neighborY := location.Y - 1
-		if neighborY < 0 {
-			panic(fmt.Sprintf("neighborY position is out of range: %d", neighborY))
-		}
 		sourceCell.walls[top].Hide()
-		m.cells[Location{X: neighborX, Y: neighborY}].walls[bottom].Hide()
+		if location.Y > 0 {
+			m.cells[Location{X: location.X, Y: location.Y - 1}].walls[bottom].Hide()
+		}
 	case right:
-		neighborX := location.X + 1
-		neighborY := location.Y
-		if neighborX >= colCount {
-			panic(fmt.Sprintf("neighborX position is out of range: %d", neighborX))
-		}
 		sourceCell.walls[right].Hide()
-		m.cells[Location{X: neighborX, Y: neighborY}].walls[left].Hide()
+		if location.X < m.colCount-1 {
+			m.cells[Location{X: location.X + 1, Y: location.Y}].walls[left].Hide()
+		}
 	case bottom:
-		neighborX := location.X
-		neighborY := location.Y + 1
-		if neighborY >= rowCount {
-			panic(fmt.Sprintf("neighborY position is out of range: %d", neighborY))
-		}
 		sourceCell.walls[bottom].Hide()
-		m.cells[Location{X: neighborX, Y: neighborY}].walls[top].Hide()
-	case left:
-		neighborX := location.X - 1
-		neighborY := location.Y
-		if neighborX < 0 {
-			panic(fmt.Sprintf("neighborX position is out of range: %d", neighborX))
+		if location.Y < m.rowCount-1 {
+			m.cells[Location{X: location.X, Y: location.Y + 1}].walls[top].Hide()
 		}
+	case left:
 		sourceCell.walls[left].Hide()
-		m.cells[Location{X: neighborX, Y: neighborY}].walls[right].Hide()
-	default:
-		panic(fmt.Sprintf("unknown side: %d", side))
+		if location.X > 0 {
+			m.cells[Location{X: location.X - 1, Y: location.Y}].walls[right].Hide()
+		}
 	}
+}
+
+func (m *Maze) RemoveWalls() {
+	time.Sleep(1 * time.Second)
+	m.cells[Location{X: 0, Y: 0}].walls[top].Hide()
+	m.cells[Location{X: m.colCount - 1, Y: m.rowCount - 1}].walls[bottom].Hide()
 }
